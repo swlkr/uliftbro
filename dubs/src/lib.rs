@@ -1,12 +1,16 @@
+use axum::extract::Path;
+pub use axum::http::Uri;
 pub use axum::{
     async_trait,
     extract::{FromRequestParts, Json, Query},
     http::header::*,
     http::request::Parts,
     http::StatusCode,
-    routing, RequestPartsExt, Router,
+    routing::{self, get, post},
+    RequestPartsExt, Router,
 };
 pub use enum_router::Routes;
+pub use static_files_enum::{Css, Js, StaticFileMeta, StaticFiles};
 pub mod tokio {
     pub use tokio::*;
 }
@@ -75,6 +79,27 @@ pub fn app() -> App {
 impl App {
     pub fn routes(mut self, router: Router) -> Self {
         self.router = router;
+        self
+    }
+
+    pub fn static_files(mut self, static_files: &'static (impl StaticFiles + Send + Sync)) -> Self {
+        self.router = self.router.route(
+            "/*file",
+            axum::routing::get(move |uri: Uri| async move {
+                match static_files.get(&uri.path()) {
+                    Some(file) => (
+                        StatusCode::OK,
+                        [(CONTENT_TYPE, file.content_type)],
+                        file.content,
+                    ),
+                    None => (
+                        StatusCode::NOT_FOUND,
+                        [(CONTENT_TYPE, "text/html; charset=utf-8")],
+                        "not found",
+                    ),
+                }
+            }),
+        );
         self
     }
 }

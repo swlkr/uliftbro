@@ -1,8 +1,8 @@
-use dubs::{app, html::Html, serve, Routes};
+use dubs::{app, serve, Css, Js, Routes, StaticFiles};
 use view::*;
 
 fn main() {
-    let app = app().routes(Route::new()); //.static_files(StaticFile::new());
+    let app = app().routes(Route::new()).static_files(StaticFile::once());
     serve(app, "127.0.0.1:9001");
 }
 
@@ -16,19 +16,31 @@ enum Route {
     Root,
 }
 
+#[derive(StaticFiles)]
+struct StaticFile {
+    #[file("/static/htmx.js")]
+    htmx: Js,
+    #[file("/static/tailwind.css")]
+    tailwind: Css,
+}
+
 mod view {
     use super::*;
-    use dubs::html::{self, *};
+    pub use dubs::html::{self, *};
 
     pub fn render_root(s: Route) -> Html {
         render(h1.class("text-2xl")(s.to_string()))
     }
 
     fn render(inner: impl Render + 'static) -> Html {
+        let static_files = StaticFile::once();
         html::render((
             doctype("html"),
             html((
-                head(link.rel("stylesheet").href("/static/tailwind.css")),
+                head((
+                    link.href(static_files.tailwind).rel("stylesheet"),
+                    script.src(static_files.htmx).defer(),
+                )),
                 body(inner),
             )),
         ))

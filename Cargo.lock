@@ -310,6 +310,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "static_files_enum",
  "stpl",
  "thiserror",
  "tokio",
@@ -1132,6 +1133,23 @@ checksum = "7b5fac59a5cb5dd637972e5fca70daf0523c9067fcdc4842f053dae04a18f8e9"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "static_files_enum"
+version = "0.1.0"
+dependencies = [
+ "static_files_enum_macros",
+]
+
+[[package]]
+name = "static_files_enum_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
