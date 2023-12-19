@@ -160,6 +160,11 @@ mod view {
                     link.href(static_files.tailwind).rel("stylesheet"),
                     script.src(static_files.htmx).defer(),
                     script.src(static_files.json_enc).defer(),
+                    meta.charset("UTF-8"),
+                    meta.content("text/html; charset=utf-8")
+                        .attr("http-equiv", "Content-Type"),
+                    meta.name("viewport")
+                        .content("width=device-width, initial-scale=1, user-scalable=no"),
                 )),
                 body.attr("hx-boost", "true")
                     .attr("hx-ext", "json-enc")
