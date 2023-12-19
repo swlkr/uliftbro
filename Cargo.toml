@@ -8,3 +8,10 @@ dubs = { path = "dubs" }
 
 [workspace]
 members = ["dubs"]
+
+[profile.release]
+lto = true
+panic = "abort"
+opt-level = "z"
+strip = true
+codegen-units = 1
