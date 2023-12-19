@@ -19,5 +19,5 @@ thiserror = { version = "1.0.50" }
 justerror = { version = "1.1.0" }
 enum_router = { path = "../../enum_router" }
 stpl = { path = "../../stpl" }
-static_files_enum = { path = "../../static_files_enum" }
+static_stash = { path = "../../static_stash" }
 

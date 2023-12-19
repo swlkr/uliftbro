@@ -1,20 +1,35 @@
-use axum::extract::Path;
 pub use axum::http::Uri;
 pub use axum::{
     async_trait,
+    body::Body,
     extract::{FromRequestParts, Json, Query},
     http::header::*,
     http::request::Parts,
     http::StatusCode,
+    response::{AppendHeaders, IntoResponse, Response},
     routing::{self, get, post},
     RequestPartsExt, Router,
 };
+pub use axum_extra::headers::Cookie;
+pub use axum_extra::typed_header::TypedHeaderRejection;
+pub use axum_extra::TypedHeader;
 pub use enum_router::Routes;
-pub use static_files_enum::{Css, Js, StaticFileMeta, StaticFiles};
+pub use justerror::Error as JustError;
+pub use static_stash::{Css, Js, StaticFiles};
+pub use thiserror;
 pub mod tokio {
     pub use tokio::*;
 }
+pub use axum::response::Redirect;
+pub use rizz::{
+    self, and, asc, connection, desc, eq, like, or, r#in, Blob, Connection, Database, Integer,
+    JournalMode, Migrator, Real, Synchronous, Table, Text,
+};
 pub use serde::*;
+
+pub fn ulid() -> String {
+    ulid::Ulid::new().to_string()
+}
 
 pub mod html {
     use std::fmt::Display;
@@ -25,9 +40,9 @@ pub mod html {
     use axum::response::{IntoResponse, Response};
     use stpl::html::RenderExt;
     pub use stpl::html::{
-        a, b, blockquote, body, button, div, doctype, footer, form, h1, h2, h3, h4, h5, head, html,
-        i, img, input, label, li, link, main, meta, nav, ol, p, pre, raw, script, section, span,
-        tbody, textarea, th, thead, tr, tt, u, ul,
+        a, b, blockquote, body, button, datalist, div, doctype, footer, form, h1, h2, h3, h4, h5,
+        head, html, i, img, input, label, li, link, main, meta, nav, ol, option, p, pre, raw,
+        script, section, span, tbody, textarea, th, thead, tr, tt, u, ul, BareTag, FinalTag, Tag,
     };
     pub use stpl::Render;
 
@@ -54,16 +69,10 @@ pub mod html {
     }
 }
 
-pub fn serve(app: App, ip: &str) {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
-            println!("Listening on {}", ip);
-            axum::serve(listener, app.router).await.unwrap();
-        });
+pub async fn serve(app: App, ip: &str) {
+    let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
+    println!("Listening on {}", ip);
+    axum::serve(listener, app.router).await.unwrap();
 }
 
 pub struct App {
@@ -88,13 +97,20 @@ impl App {
             axum::routing::get(move |uri: Uri| async move {
                 match static_files.get(&uri.path()) {
                     Some(file) => (
+                        // CACHE_CONTROL, "public, max-age=604800"
                         StatusCode::OK,
-                        [(CONTENT_TYPE, file.content_type)],
+                        [
+                            (CONTENT_TYPE, file.content_type),
+                            (CACHE_CONTROL, "public, max-age=604800"),
+                        ],
                         file.content,
                     ),
                     None => (
                         StatusCode::NOT_FOUND,
-                        [(CONTENT_TYPE, "text/html; charset=utf-8")],
+                        [
+                            (CONTENT_TYPE, "text/html; charset=utf-8"),
+                            (CACHE_CONTROL, "public, max-age=604800"),
+                        ],
                         "not found",
                     ),
                 }

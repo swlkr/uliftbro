@@ -310,7 +310,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
- "static_files_enum",
+ "static_stash",
  "stpl",
  "thiserror",
  "tokio",
@@ -1136,14 +1136,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "static_files_enum"
+name = "static_stash"
 version = "0.1.0"
 dependencies = [
- "static_files_enum_macros",
+ "static_stash_macros",
 ]
 
 [[package]]
-name = "static_files_enum_macros"
+name = "static_stash_macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro-error",
