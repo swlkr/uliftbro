@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 pub use axum::http::Uri;
 pub use axum::{
     async_trait,
@@ -14,8 +16,10 @@ pub use axum_extra::headers::Cookie;
 pub use axum_extra::typed_header::TypedHeaderRejection;
 pub use axum_extra::TypedHeader;
 pub use enum_router::Routes;
+use html::Html;
 pub use justerror::Error as JustError;
 pub use static_stash::{Css, Js, StaticFiles};
+use stpl::Render;
 pub use thiserror;
 pub mod tokio {
     pub use tokio::*;
@@ -71,12 +75,6 @@ pub mod html {
     }
 }
 
-pub async fn serve(app: App, ip: &str) {
-    let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
-    println!("Listening on {}", ip);
-    axum::serve(listener, app.router).await.unwrap();
-}
-
 pub struct App {
     router: Router,
 }
@@ -120,40 +118,63 @@ impl App {
         );
         self
     }
+
+    pub async fn serve(self, ip: &str) {
+        let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
+        println!("Listening on {}", ip);
+        axum::serve(listener, self.router).await.unwrap();
+    }
 }
 
-// async fn file(uri: Uri) -> impl IntoResponse {
-//     StaticFile(uri.path().to_string())
-// }
+pub fn res() -> Responder {
+    Responder::new()
+}
 
-// #[derive(rust_embed::RustEmbed)]
-// #[folder = "static"]
-// #[prefix = "/static/"]
-// pub struct StaticFiles;
+impl IntoResponse for Responder {
+    fn into_response(self) -> Response {
+        (self.status_code, self.headers, self.body).into_response()
+    }
+}
 
-// struct StaticFile<T>(T, Box<dyn StaticFiles + 'static>);
+pub struct Responder {
+    status_code: StatusCode,
+    headers: HeaderMap,
+    body: Html,
+}
 
-// impl<T> IntoResponse for StaticFile<T>
-// where
-//     T: Into<String>,
-// {
-//     fn into_response(self) -> Response {
-//         let path = self.0.into();
+const HX_LOCATION: HeaderName = HeaderName::from_static("hx-location");
 
-//         match StaticFile::get(path.as_str()) {
-//             Some(content) => {
-//                 let mime = mime_guess::from_path(path).first_or_octet_stream();
-//                 ([(header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
-//             }
-//             None => (StatusCode::NOT_FOUND, "404 Not Found").into_response(),
-//         }
-//     }
-// }
+impl Responder {
+    fn new() -> Self {
+        Self {
+            status_code: StatusCode::OK,
+            headers: HeaderMap::default(),
+            body: Html(Box::new(())),
+        }
+    }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+    pub fn render(mut self, component: impl Render + 'static) -> Self {
+        self.body = Html(Box::new(component));
+        self.headers
+            .insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
 
-//     #[test]
-//     fn it_works() {}
-// }
+        self
+    }
+
+    pub fn redirect(mut self, route: impl Display) -> Self {
+        let value = HeaderValue::from_str(&route.to_string()).unwrap();
+        self.headers.insert(LOCATION, value.clone());
+        self.headers.insert(HX_LOCATION, value.clone());
+        self
+    }
+
+    pub fn header(mut self, name: impl Into<HeaderName>, value: impl Into<HeaderValue>) -> Self {
+        self.headers.insert(name.into(), value.into());
+        self
+    }
+
+    pub fn set_cookie(mut self, value: impl Into<HeaderValue>) -> Self {
+        self.headers.insert(SET_COOKIE, value.into());
+        self
+    }
+}

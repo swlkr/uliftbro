@@ -5,18 +5,21 @@ use std::borrow::Cow;
 
 use db::{db, Database, Session, Set, User};
 use dubs::{
-    and, app, asc, async_trait, desc, eq, serve, tokio, Cookie, Css, Deserialize, FromRequestParts,
-    HeaderMap, HeaderName, HeaderValue, IntoResponse, Js, Json, JustError, Parts, Response, Routes,
-    Serialize, StaticFiles, StatusCode, TypedHeader, CONTENT_TYPE, LOCATION, SET_COOKIE,
+    and, app, asc, async_trait, desc, eq, res, tokio, Cookie, Css, Deserialize, FromRequestParts,
+    HeaderValue, IntoResponse, Js, Json, JustError, Parts, Response, Routes, Serialize,
+    StaticFiles, StatusCode, TypedHeader,
 };
 use dubs::{thiserror, ulid};
 use parts::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let app = app().routes(Route::new()).static_files(StaticFile::once());
     let _ = db().await;
-    serve(app, "127.0.0.1:9001").await;
+    app()
+        .routes(Route::new())
+        .static_files(StaticFile::once())
+        .serve("127.0.0.1:9001")
+        .await;
 
     Ok(())
 }
@@ -87,7 +90,7 @@ async fn create_set(user: Option<User>, Json(form): Json<SetForm>) -> Result<imp
 
             Ok(res()
                 .redirect(Route::SetList)
-                .header(SET_COOKIE, session_cookie(Some(session.id)))
+                .set_cookie(session_cookie(Some(session.id)))
                 .render(set_list_part(sets)))
         }
     }
@@ -658,57 +661,4 @@ fn session_cookie(id: Option<String>) -> HeaderValue {
     ]
     .join(";");
     HeaderValue::from_str(&format!("{}", parts)).unwrap()
-}
-
-fn res() -> Responder {
-    Responder::new()
-}
-
-impl IntoResponse for Responder {
-    fn into_response(self) -> Response {
-        (self.status_code, self.headers, self.body).into_response()
-    }
-}
-
-struct Responder {
-    status_code: StatusCode,
-    headers: HeaderMap,
-    body: Html,
-}
-
-const HX_LOCATION: HeaderName = HeaderName::from_static("hx-location");
-
-impl Responder {
-    fn new() -> Self {
-        Self {
-            status_code: StatusCode::OK,
-            headers: HeaderMap::default(),
-            body: Html(Box::new(())),
-        }
-    }
-
-    fn render(mut self, component: impl parts::Render) -> Self {
-        self.body = Html(Box::new(component));
-        self.headers
-            .insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
-
-        self
-    }
-
-    fn redirect(mut self, route: Route) -> Self {
-        let value = HeaderValue::from_str(&route.to_string()).unwrap();
-        self.headers.insert(LOCATION, value.clone());
-        self.headers.insert(HX_LOCATION, value.clone());
-        self
-    }
-
-    fn header(mut self, name: impl Into<HeaderName>, value: impl Into<HeaderValue>) -> Self {
-        self.headers.insert(name.into(), value.into());
-        self
-    }
-
-    fn set_cookie(mut self, value: impl Into<HeaderValue>) -> Self {
-        self.headers.insert(SET_COOKIE, value.into());
-        self
-    }
 }
