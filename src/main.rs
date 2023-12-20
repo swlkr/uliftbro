@@ -5,12 +5,12 @@ use std::borrow::Cow;
 
 use db::{db, Database, Session, Set, User};
 use dubs::{
-    app, asc, async_trait, desc, eq, serve, tokio, Cookie, Css, Deserialize, FromRequestParts,
+    and, app, asc, async_trait, desc, eq, serve, tokio, Cookie, Css, Deserialize, FromRequestParts,
     HeaderMap, HeaderName, HeaderValue, IntoResponse, Js, Json, JustError, Parts, Response, Routes,
     Serialize, StaticFiles, StatusCode, TypedHeader, CONTENT_TYPE, LOCATION, SET_COOKIE,
 };
 use dubs::{thiserror, ulid};
-use view::*;
+use parts::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,20 +22,20 @@ async fn main() -> Result<()> {
 }
 
 async fn root(SomeUser(user): SomeUser) -> Result<Html> {
+    let user_id = user.unwrap_or_default().id;
     let Database { db, sets, .. } = db().await;
-    let sets: Vec<Set> = match user {
-        Some(user) => {
-            db.select()
-                .from(sets)
-                .r#where(eq(sets.user_id, user.id))
-                .limit(30)
-                .order(vec![asc(sets.name)])
-                .all()
-                .await?
-        }
-        None => vec![],
-    };
-    render(root_component(sets, SetForm::default()))
+    let sets: Vec<Set> = db
+        .select()
+        .from(sets)
+        .r#where(eq(sets.user_id, user_id))
+        .limit(30)
+        .order(vec![asc(sets.name)])
+        .all()
+        .await?;
+    let mut names = sets.into_iter().map(|s| s.name).collect::<Vec<_>>();
+    names.dedup();
+
+    render(root_part(names, SetForm::default()))
 }
 
 async fn create_set(user: Option<User>, Json(form): Json<SetForm>) -> Result<impl IntoResponse> {
@@ -88,7 +88,7 @@ async fn create_set(user: Option<User>, Json(form): Json<SetForm>) -> Result<imp
             Ok(res()
                 .redirect(Route::SetList)
                 .header(SET_COOKIE, session_cookie(Some(session.id)))
-                .render(view::set_list(sets)))
+                .render(set_list_part(sets)))
         }
     }
 }
@@ -105,50 +105,135 @@ async fn set_list(user: User) -> Result<Html> {
         .all()
         .await?;
 
-    render(view::set_list(sets))
+    render(set_list_part(sets))
 }
 
-mod view {
+async fn profile(user: User) -> Result<Html> {
+    render(profile_part(user))
+}
+
+async fn logout() -> impl IntoResponse {
+    res().redirect(Route::Root).set_cookie(session_cookie(None))
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "dubs")]
+struct DeleteSetForm {
+    id: String,
+}
+
+async fn delete_set(
+    user: User,
+    Json(DeleteSetForm { id }): Json<DeleteSetForm>,
+) -> Result<impl IntoResponse> {
+    let Database { db, sets, .. } = db().await;
+    let _ = db
+        .delete_from(sets)
+        .r#where(and(eq(sets.id, id), eq(sets.user_id, user.id)))
+        .rows_affected()
+        .await?;
+
+    Ok(res().redirect(Route::SetList))
+}
+
+mod parts {
     use super::*;
     pub use dubs::html::Html;
     use dubs::html::{self, *};
-    use std::fmt::Display;
 
     pub trait Render = dubs::html::Render + 'static;
 
-    pub fn root_component(sets: Vec<Set>, SetForm { name, reps, weight }: SetForm) -> impl Render {
+    pub fn root_part(names: Vec<String>, SetForm { name, reps, weight }: SetForm) -> impl Render {
         (
             h1.class("text-2xl text-center")("u lift bro?"),
-            ( form.action(Route::CreateSet).method("post").class("flex flex-col px-4 lg:px-0 pt-4 gap-4")((
-            div((
-                label("name"),
-                    suggest_input("name", sets.into_iter().map(|s| s.name).collect::<Vec<_>>(), name),
-            )),
-                div((
-                    label("reps"),
-                    number_input("reps", reps)
-                )),
-                div((
-                    label("weight"),
-                    number_input("weight", weight)
-                )),
-            button.class("flex rounded-md bg-orange-500 active:bg-orange-700 text-white p-4 items-center justify-center uppercase w-full")("start lifting now")
-        ))))
+            (post(Route::CreateSet).class("flex flex-col px-4 lg:px-0 pt-4 gap-4")((
+                div((label("name"), suggest_input("name", names, name))),
+                div((label("reps"), number_input("reps", reps))),
+                div((label("weight"), number_input("weight", weight))),
+                button()("Start lifting now"),
+            ))),
+        )
+    }
+
+    fn time_ago(seconds: u64) -> impl Render {
+        let now = now();
+        let seconds = now - seconds;
+
+        const YEAR: u64 = 31_536_000;
+        const MONTH: u64 = 2_592_000;
+        const DAY: u64 = 86_400;
+        const HOUR: u64 = 3600;
+        const MINUTE: u64 = 60;
+        let diff = seconds / YEAR;
+        if diff > 1 {
+            return format!("{}y", diff);
+        }
+
+        let diff = seconds / MONTH;
+        if diff > 1 {
+            return format!("{}m", diff);
+        }
+
+        let diff = seconds / DAY;
+        if diff > 1 {
+            return format!("{}d", diff);
+        }
+
+        let diff = seconds / HOUR;
+        if diff > 1 {
+            return format!("{}h", diff);
+        }
+
+        let diff = seconds / MINUTE;
+        if diff > 1 {
+            return format!("{}m", diff);
+        }
+
+        return format!("{}s", seconds);
     }
 
     fn set_list_item(set: Set) -> impl Render {
-        li.class("justify-between flex")((
-            span(set.name.clone()),
-            span.class("flex gap-4")((span(set.weight.to_string()), span(set.reps.to_string()))),
+        li.class("flex justify-between")((
+            div.class("flex flex-col gap-1 py-5")((
+                div.class("font-bold")(set.name),
+                div.class("flex gap-4 dark:text-gray-400 text-gray-300")((
+                    span((set.weight, " lbs")),
+                    span((set.reps, " reps")),
+                    time_ago(set.created_at),
+                )),
+            )),
+            post(Route::DeleteSet).class("flex justify-center items-center")((
+                hidden_input().name("id").value(set.id),
+                small_button()("Delete"),
+            )),
         ))
     }
 
-    pub fn set_list(sets: Vec<Set>) -> impl Render {
+    fn hidden_input() -> Tag {
+        input.r#type("hidden")
+    }
+
+    fn small_button() -> Tag {
+        html::button
+            .class("rounded-md bg-transparent border dark:border-gray-700 border-gray-300 text-white px-3 py-1")
+    }
+
+    pub fn set_list_part(sets: Vec<Set>) -> impl Render {
         (
-            h1.class("text-2xl text-center")("your sets"),
-            ul(sets.into_iter().map(set_list_item).collect::<Vec<_>>()),
-            a.href(Route::Root).class("flex rounded-md bg-orange-500 active:bg-orange-700 text-white p-4 items-center justify-center uppercase w-full")("start another set")
+            h1.class("text-2xl text-center")("sets"),
+            ul.class("divide-y divide-gray-100 dark:divide-gray-800")(
+                sets.into_iter().map(set_list_item).collect::<Vec<_>>(),
+            ),
+            link_button().href(Route::Root)("start another set"),
         )
+    }
+
+    pub fn link_button() -> Tag {
+        a.class("flex rounded-md bg-orange-500 active:bg-orange-700 text-white p-4 items-center justify-center uppercase w-full")
+    }
+
+    pub fn button() -> Tag {
+        html::button.class("flex rounded-md bg-orange-500 active:bg-orange-700 text-white p-4 items-center justify-center uppercase w-full")
     }
 
     pub fn render(inner: impl Render) -> Result<Html> {
@@ -168,9 +253,13 @@ mod view {
                 )),
                 body.attr("hx-boost", "true")
                     .attr("hx-ext", "json-enc")
-                    .class("h-screen dark:bg-gray-900 dark:text-white")(html::main
-                    .class("max-w-lg mx-auto lg:mt-16")(
-                    inner
+                    .class("h-screen dark:bg-gray-900 dark:text-white")((
+                    nav.class("text-center flex gap-12 justify-center items-center pt-12")((
+                        a.href(Route::SetList)("sets"),
+                        a.href(Route::Root)("lift"),
+                        a.href(Route::Profile)("profile"),
+                    )),
+                    html::main.class("max-w-lg mx-auto lg:mt-16")(inner),
                 )),
             )),
         )))
@@ -184,8 +273,8 @@ mod view {
         input.class("block w-full rounded-md border-0 px-2 py-4 dark:bg-gray-700 dark:text-white light:text-gray-900 outline-0 focus:outline-0 focus:ring-0 focus-visible:outline-0 focus:outline-none placeholder:text-gray-400").r#type("text")
     }
 
-    fn number_input(name: &str, value: impl Display) -> impl Render {
-        input.class("block w-full rounded-md border-0 px-2 py-4 dark:bg-gray-700 dark:text-white light:text-gray-900 outline-0 focus:outline-0 focus:ring-0 focus-visible:outline-0 focus:outline-none placeholder:text-gray-400").r#type("number").name(name.to_string()).value(value.to_string())
+    fn number_input(name: &'static str, value: usize) -> impl Render {
+        input.class("block w-full rounded-md border-0 px-2 py-4 dark:bg-gray-700 dark:text-white light:text-gray-900 outline-0 focus:outline-0 focus:ring-0 focus-visible:outline-0 focus:outline-none placeholder:text-gray-400").r#type("number").name(name).value(value.to_string())
     }
 
     fn suggest_input(name: &'static str, options: Vec<String>, value: String) -> impl Render {
@@ -204,14 +293,25 @@ mod view {
             ),
         )
     }
+
+    pub fn profile_part(user: User) -> impl Render {
+        div.class("flex flex-col gap-8")((
+            h1(("Your secret key: ", span(user.secret))),
+            form.action(Route::Logout).method("post")(button()("logout")),
+        ))
+    }
+
+    fn post(route: Route) -> Tag {
+        form.method("post").action(route)
+    }
 }
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(crate = "dubs")]
 struct SetForm {
     name: String,
-    reps: u16,
-    weight: u16,
+    reps: usize,
+    weight: usize,
 }
 
 #[derive(StaticFiles)]
@@ -232,6 +332,12 @@ enum Route {
     CreateSet,
     #[get("/sets")]
     SetList,
+    #[get("/profile")]
+    Profile,
+    #[post("/delete-set")]
+    DeleteSet,
+    #[post("/logout")]
+    Logout,
 }
 
 impl From<Route> for Cow<'static, str> {
@@ -372,7 +478,7 @@ mod db {
         }
     }
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, Default)]
     #[serde(crate = "dubs")]
     pub struct User {
         pub id: String,
@@ -397,18 +503,19 @@ mod db {
         pub created_at: u64,
     }
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Clone, Serialize, Deserialize, Debug)]
     #[serde(crate = "dubs")]
     pub struct Set {
         pub id: String,
         pub user_id: String,
         pub name: String,
-        pub weight: u16,
-        pub reps: u16,
+        pub weight: usize,
+        pub reps: usize,
         pub created_at: u64,
     }
+
     impl Set {
-        pub fn new(user: &User, name: String, reps: u16, weight: u16) -> Self {
+        pub fn new(user: &User, name: String, reps: usize, weight: usize) -> Self {
             Self {
                 id: ulid(),
                 user_id: user.id.clone(),
@@ -537,9 +644,15 @@ fn now() -> u64 {
 
 fn session_cookie(id: Option<String>) -> HeaderValue {
     let parts = vec![
-        format!("id={}", id.unwrap_or_default()).as_str(),
+        &format!("id={}", id.as_ref().unwrap_or(&"".to_owned())),
         "HttpOnly",
-        "Max-Age=34560000",
+        &format!(
+            "Max-Age={}",
+            match id.as_ref() {
+                Some(_) => 34_560_000,
+                None => 0,
+            }
+        ),
         "SameSite=Strict",
         #[cfg(not(debug_assertions))]
         "Secure",
@@ -576,7 +689,7 @@ impl Responder {
         }
     }
 
-    fn render(mut self, component: impl view::Render) -> Self {
+    fn render(mut self, component: impl parts::Render) -> Self {
         self.body = Html(Box::new(component));
         self.headers
             .insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
@@ -593,6 +706,11 @@ impl Responder {
 
     fn header(mut self, name: impl Into<HeaderName>, value: impl Into<HeaderValue>) -> Self {
         self.headers.insert(name.into(), value.into());
+        self
+    }
+
+    fn set_cookie(mut self, value: impl Into<HeaderValue>) -> Self {
+        self.headers.insert(SET_COOKIE, value.into());
         self
     }
 }

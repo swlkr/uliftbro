@@ -38,13 +38,15 @@ pub mod html {
     use axum::http::header::CONTENT_TYPE;
     use axum::http::StatusCode;
     use axum::response::{IntoResponse, Response};
-    use stpl::html::RenderExt;
+    pub use stpl::html::RenderExt;
     pub use stpl::html::{
         a, b, blockquote, body, button, datalist, div, doctype, footer, form, h1, h2, h3, h4, h5,
         head, html, i, img, input, label, li, link, main, meta, nav, ol, option, p, pre, raw,
-        script, section, span, tbody, textarea, th, thead, tr, tt, u, ul, BareTag, FinalTag, Tag,
+        script, section, span, string, tbody, textarea, th, thead, tr, tt, u, ul, BareTag,
+        FinalTag, Tag,
     };
     pub use stpl::Render;
+    pub use stpl::Renderer;
 
     pub struct Html(pub Box<dyn Render>);
 
