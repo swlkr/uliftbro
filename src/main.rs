@@ -236,27 +236,27 @@ mod parts {
         const HOUR: u64 = 3600;
         const MINUTE: u64 = 60;
         let diff = seconds / YEAR;
-        if diff > 1 {
+        if diff > 0 {
             return format!("{}y ago", diff);
         }
 
         let diff = seconds / MONTH;
-        if diff > 1 {
+        if diff > 0 {
             return format!("{}m ago", diff);
         }
 
         let diff = seconds / DAY;
-        if diff > 1 {
+        if diff > 0 {
             return format!("{}d ago", diff);
         }
 
         let diff = seconds / HOUR;
-        if diff > 1 {
+        if diff > 0 {
             return format!("{}h ago", diff);
         }
 
         let diff = seconds / MINUTE;
-        if diff > 1 {
+        if diff > 0 {
             return format!("{}m ago", diff);
         }
 
