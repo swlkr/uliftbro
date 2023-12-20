@@ -192,12 +192,16 @@ mod parts {
         return format!("{}s", seconds);
     }
 
-    fn set_list_item(set: Set) -> impl Render {
+    fn set_li_part(set: Set) -> impl Render {
         li.class("flex justify-between")((
             div.class("flex flex-col gap-1 py-5")((
                 div.class("font-bold")(set.name),
                 div.class("flex gap-4 dark:text-gray-400 text-gray-300")((
-                    span((set.weight, " lbs")),
+                    raw(if set.weight == 0 {
+                        ().render_to_string()
+                    } else {
+                        span(format!("{} lbs", set.weight)).render_to_string()
+                    }),
                     span((set.reps, " reps")),
                     time_ago(set.created_at),
                 )),
@@ -222,7 +226,7 @@ mod parts {
         (
             h1.class("text-2xl text-center")("sets"),
             ul.class("divide-y divide-gray-100 dark:divide-gray-800")(
-                sets.into_iter().map(set_list_item).collect::<Vec<_>>(),
+                sets.into_iter().map(set_li_part).collect::<Vec<_>>(),
             ),
             link_button().href(Route::Root)("start another set"),
         )
