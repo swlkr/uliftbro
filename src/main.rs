@@ -599,16 +599,6 @@ where
     }
 }
 
-// async fn set(user: User, Json(params): Json<SetForm>) -> Html {
-//     let db = db();
-//     let { sets } = db;
-//     let set: Set = params.into();
-//     set.user = user;
-//     let _ = db.insert_into(sets).values(set).rows_affected().await?;
-//     let sets: Vec<Set> = db.select().from(sets).r#where(eq(sets.user_id, user.id)).limit(30).order(desc(sets.created_at)).all().await?;
-//     render_sets(sets)
-// }
-
 fn not_found(error: Error) -> Response {
     (StatusCode::NOT_FOUND, error.to_string()).into_response()
 }
