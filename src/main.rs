@@ -192,7 +192,7 @@ mod parts {
         return format!("{}s", seconds);
     }
 
-    fn set_li_part(set: Set) -> impl Render {
+    fn set_li(set: Set) -> impl Render {
         li.class("flex justify-between")((
             div.class("flex flex-col gap-1 py-5")((
                 div.class("font-bold")(set.name),
@@ -226,7 +226,7 @@ mod parts {
         (
             h1.class("text-2xl text-center")("sets"),
             ul.class("divide-y divide-gray-100 dark:divide-gray-800")(
-                sets.into_iter().map(set_li_part).collect::<Vec<_>>(),
+                sets.into_iter().map(set_li).collect::<Vec<_>>(),
             ),
             link_button().href(Route::Root)("start another set"),
         )
