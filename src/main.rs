@@ -240,33 +240,37 @@ mod parts {
         html::button.class("flex rounded-md bg-orange-500 active:bg-orange-700 text-white p-4 items-center justify-center uppercase w-full")
     }
 
-    pub fn render(inner: impl Render) -> Result<Html> {
+    fn head() -> impl Render {
         let static_files = StaticFile::once();
-        Ok(html::render((
-            doctype("html"),
-            html((
-                head((
-                    link.href(static_files.tailwind).rel("stylesheet"),
-                    script.src(static_files.htmx).defer(),
-                    script.src(static_files.json_enc).defer(),
-                    meta.charset("UTF-8"),
-                    meta.content("text/html; charset=utf-8")
-                        .attr("http-equiv", "Content-Type"),
-                    meta.name("viewport")
-                        .content("width=device-width, initial-scale=1, user-scalable=no"),
-                )),
-                body.attr("hx-boost", "true")
-                    .attr("hx-ext", "json-enc")
-                    .class("h-screen dark:bg-gray-900 dark:text-white")((
-                    nav.class("text-center flex gap-12 justify-center items-center pt-12")((
-                        a.href(Route::SetList)("sets"),
-                        a.href(Route::Root)("lift"),
-                        a.href(Route::Profile)("profile"),
-                    )),
-                    html::main.class("max-w-lg mx-auto lg:mt-16")(inner),
-                )),
+        html::head((
+            link.href(static_files.tailwind).rel("stylesheet"),
+            script.src(static_files.htmx).defer(),
+            script.src(static_files.json_enc).defer(),
+            meta.charset("UTF-8"),
+            meta.content("text/html; charset=utf-8")
+                .attr("http-equiv", "Content-Type"),
+            meta.name("viewport")
+                .content("width=device-width, initial-scale=1, user-scalable=no"),
+        ))
+    }
+
+    fn body(inner: impl Render) -> impl Render {
+        html::body
+            .class("h-screen dark:bg-gray-900 dark:text-white")
+            .attr("hx-boost", "true")
+            .attr("hx-push-url", "true")
+            .attr("hx-ext", "json-enc")((
+            nav.class("text-center flex gap-12 justify-center items-center pt-12")((
+                a.href(Route::SetList)("sets"),
+                a.href(Route::Root)("lift"),
+                a.href(Route::Profile)("profile"),
             )),
-        )))
+            html::main.class("max-w-lg mx-auto lg:mt-16")(inner),
+        ))
+    }
+
+    pub fn render(inner: impl Render) -> Result<Html> {
+        Ok(html::render((doctype("html"), html((head(), body(inner))))))
     }
 
     fn label(name: &'static str) -> impl Render {
