@@ -4,10 +4,11 @@
 use db::{db, Database, Session, Set, User};
 use dubs::{
     and, app, asc, async_trait, desc, eq, res, tokio, Cookie, Css, Deserialize, FromRequestParts,
-    HeaderValue, IntoResponse, Js, Json, JustError, Parts, Response, Routes, Serialize,
-    StaticFiles, StatusCode, TypedHeader,
+    HeaderValue, IntoResponse, Js, Json, JustError, Parts, Response, Serialize, StaticFiles,
+    StatusCode, TypedHeader,
 };
 use dubs::{thiserror, ulid};
+use enum_router::Routes;
 use parts::*;
 use std::borrow::Cow;
 
@@ -15,7 +16,7 @@ use std::borrow::Cow;
 async fn main() -> Result<()> {
     let _ = db().await;
     app()
-        .routes(Route::new())
+        .routes(Route::router())
         .static_files(StaticFile::once())
         .serve("127.0.0.1:9001")
         .await;

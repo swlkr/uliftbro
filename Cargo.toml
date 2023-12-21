@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 dubs = { path = "dubs" }
+axum = { version = "0.7.0", features = ["macros"] }
+enum_router = { git = "https://github.com/swlkr/enum_router.git" }
 
 [workspace]
 members = ["dubs"]

@@ -15,7 +15,6 @@ pub use axum::{
 pub use axum_extra::headers::Cookie;
 pub use axum_extra::typed_header::TypedHeaderRejection;
 pub use axum_extra::TypedHeader;
-pub use enum_router::Routes;
 use html::Html;
 pub use justerror::Error as JustError;
 pub use static_stash::{Css, Js, StaticFiles};

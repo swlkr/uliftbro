@@ -322,6 +322,7 @@ dependencies = [
 [[package]]
 name = "enum_router"
 version = "0.1.0"
+source = "git+https://github.com/swlkr/enum_router.git#be1489236fd581f4702c32c682dd9586a68a1f14"
 dependencies = [
  "axum-core 0.3.4",
  "enum_router_macro",
@@ -330,6 +331,7 @@ dependencies = [
 [[package]]
 name = "enum_router_macro"
 version = "0.1.0"
+source = "git+https://github.com/swlkr/enum_router.git#be1489236fd581f4702c32c682dd9586a68a1f14"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -1138,6 +1140,7 @@ dependencies = [
 [[package]]
 name = "static_stash"
 version = "0.1.0"
+source = "git+https://github.com/swlkr/static_stash.git#c54fad6f18931e6de611d3825982ec4161dc86a2"
 dependencies = [
  "static_stash_macros",
 ]
@@ -1145,6 +1148,7 @@ dependencies = [
 [[package]]
 name = "static_stash_macros"
 version = "0.1.0"
+source = "git+https://github.com/swlkr/static_stash.git#c54fad6f18931e6de611d3825982ec4161dc86a2"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -1155,6 +1159,7 @@ dependencies = [
 [[package]]
 name = "stpl"
 version = "0.5.0"
+source = "git+https://github.com/swlkr/stpl#8cadc8b085611ec63b3270def5c3c4c41f576d71"
 
 [[package]]
 name = "syn"
@@ -1378,7 +1383,9 @@ dependencies = [
 name = "uliftbro"
 version = "0.1.0"
 dependencies = [
+ "axum 0.7.2",
  "dubs",
+ "enum_router",
 ]
 
 [[package]]
