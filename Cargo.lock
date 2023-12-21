@@ -1140,7 +1140,7 @@ dependencies = [
 [[package]]
 name = "static_stash"
 version = "0.1.0"
-source = "git+https://github.com/swlkr/static_stash.git#c54fad6f18931e6de611d3825982ec4161dc86a2"
+source = "git+https://github.com/swlkr/static_stash.git#fd505114cf68575f33f6a7188d63a3bded116f05"
 dependencies = [
  "static_stash_macros",
 ]
@@ -1148,7 +1148,7 @@ dependencies = [
 [[package]]
 name = "static_stash_macros"
 version = "0.1.0"
-source = "git+https://github.com/swlkr/static_stash.git#c54fad6f18931e6de611d3825982ec4161dc86a2"
+source = "git+https://github.com/swlkr/static_stash.git#fd505114cf68575f33f6a7188d63a3bded116f05"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -1386,6 +1386,7 @@ dependencies = [
  "axum 0.7.2",
  "dubs",
  "enum_router",
+ "serde",
 ]
 
 [[package]]

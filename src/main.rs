@@ -3,13 +3,13 @@
 
 use db::{db, Database, Session, Set, User};
 use dubs::{
-    and, app, asc, async_trait, desc, eq, res, tokio, Cookie, Css, Deserialize, FromRequestParts,
-    HeaderValue, IntoResponse, Js, Json, JustError, Parts, Response, Serialize, StaticFiles,
-    StatusCode, TypedHeader,
+    and, app, asc, async_trait, desc, eq, res, tokio, Cookie, Css, FromRequestParts, HeaderValue,
+    IntoResponse, Js, Json, JustError, Parts, Response, StaticFiles, StatusCode, TypedHeader,
 };
 use dubs::{thiserror, ulid};
 use enum_router::Routes;
 use parts::*;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 #[tokio::main]
@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
     app()
         .routes(Route::router())
         .static_files(StaticFile::once())
-        .serve("127.0.0.1:9001")
+        .serve("127.0.0.1:9005")
         .await;
 
     Ok(())
@@ -124,7 +124,6 @@ async fn logout() -> impl IntoResponse {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(crate = "dubs")]
 struct DeleteSetForm {
     id: String,
 }
@@ -154,7 +153,6 @@ async fn login_form() -> Result<Html> {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(crate = "dubs")]
 struct LoginForm {
     secret: String,
     error: Option<String>,
@@ -479,7 +477,6 @@ mod parts {
 }
 
 #[derive(Serialize, Deserialize, Default)]
-#[serde(crate = "dubs")]
 struct SetForm {
     name: String,
     reps: usize,
@@ -655,7 +652,6 @@ mod db {
     }
 
     #[derive(Serialize, Deserialize, Debug, Default)]
-    #[serde(crate = "dubs")]
     pub struct User {
         pub id: String,
         pub secret: String,
@@ -672,7 +668,6 @@ mod db {
     }
 
     #[derive(Serialize, Deserialize, Debug)]
-    #[serde(crate = "dubs")]
     pub struct Session {
         pub id: String,
         pub user_id: String,
@@ -680,7 +675,6 @@ mod db {
     }
 
     #[derive(Clone, Serialize, Deserialize, Debug)]
-    #[serde(crate = "dubs")]
     pub struct Set {
         pub id: String,
         pub user_id: String,
