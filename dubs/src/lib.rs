@@ -160,6 +160,12 @@ impl Responder {
         self
     }
 
+    pub fn cache(mut self) -> Self {
+        self.headers
+            .insert(CACHE_CONTROL, "private, max-age=15".parse().unwrap());
+        self
+    }
+
     pub fn redirect(mut self, route: impl Display) -> Self {
         let value = HeaderValue::from_str(&route.to_string()).unwrap();
         self.headers.insert(LOCATION, value.clone());

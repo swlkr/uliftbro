@@ -39,7 +39,7 @@ mod backend {
         Ok(())
     }
 
-    async fn root(SomeUser(user): SomeUser) -> Result<Html> {
+    async fn root(SomeUser(user): SomeUser) -> Result<impl IntoResponse> {
         let user_id = user.unwrap_or_default().id;
         let Database { db, sets, .. } = db().await;
         let sets: Vec<Set> = db
@@ -54,10 +54,11 @@ mod backend {
         names.dedup();
         let is_logged_in = user_id == String::default();
 
-        render(
+        Ok(render(
             Route::Root,
             root_part(is_logged_in, names, SetForm::default()),
         )
+        .cache())
     }
 
     async fn create_set(
@@ -118,7 +119,7 @@ mod backend {
         }
     }
 
-    async fn set_list(user: User) -> Result<Html> {
+    async fn set_list(user: User) -> Result<impl IntoResponse> {
         let Database { db, sets, .. } = db().await;
 
         let sets: Vec<Set> = db
@@ -130,11 +131,11 @@ mod backend {
             .all()
             .await?;
 
-        render(Route::SetList, set_list_part(user, sets))
+        Ok(render(Route::SetList, set_list_part(user, sets)))
     }
 
-    async fn profile(user: User) -> Result<Html> {
-        render(Route::Profile, profile_part(user))
+    async fn profile(user: User) -> Result<impl IntoResponse> {
+        Ok(render(Route::Profile, profile_part(user)).cache())
     }
 
     async fn logout() -> impl IntoResponse {
@@ -160,14 +161,15 @@ mod backend {
         Ok(res().redirect(Route::SetList))
     }
 
-    async fn login_form() -> Result<Html> {
-        render(
+    async fn login_form() -> Result<impl IntoResponse> {
+        Ok(render(
             Route::Login,
             login_form_part(LoginForm {
                 secret: "".into(),
                 error: None,
             }),
         )
+        .cache())
     }
 
     #[derive(Serialize, Deserialize, Clone)]
@@ -208,8 +210,10 @@ mod backend {
 
     mod parts {
         use super::*;
-        pub use dubs::html::Html;
-        use dubs::html::{self, *};
+        use dubs::{
+            html::{self, *},
+            Responder,
+        };
 
         pub trait Render = dubs::html::Render + 'static;
 
@@ -355,6 +359,7 @@ mod backend {
                 link.href(static_files.tailwind.clone()).rel("stylesheet"),
                 script.src(static_files.htmx.clone()).defer(),
                 script.src(static_files.json_enc.clone()).defer(),
+                script.src(static_files.preload.clone()).defer(),
                 meta.charset("UTF-8"),
                 meta.content("text/html; charset=utf-8")
                     .attr("http-equiv", "Content-Type"),
@@ -399,7 +404,10 @@ mod backend {
             if route == current_route {
                 class.push_str(" text-orange-500");
             }
-            a.class(class).href(route)((span.class("visible lg:invisible")(icon), span(s)))
+            a.class(class).attr1("preload").href(route)((
+                span.class("visible lg:invisible")(icon),
+                span(s),
+            ))
         }
 
         fn nav(route: Route) -> impl Render {
@@ -417,17 +425,14 @@ mod backend {
                 .class("h-screen dark:bg-gray-900 dark:text-white")
                 .attr("hx-boost", "true")
                 .attr("hx-push-url", "true")
-                .attr("hx-ext", "json-enc")((
+                .attr("hx-ext", "json-enc, preload")((
                 nav(route),
                 html::main.class("max-w-lg mx-auto lg:mt-16 pt-4")(inner),
             ))
         }
 
-        pub fn render(route: Route, inner: impl Render) -> Result<Html> {
-            Ok(html::render((
-                doctype("html"),
-                html((head(), body(route, inner))),
-            )))
+        pub fn render(route: Route, inner: impl Render) -> Responder {
+            res().render((doctype("html"), html((head(), body(route, inner)))))
         }
 
         fn label(name: &'static str) -> impl Render {
@@ -514,6 +519,8 @@ mod backend {
         tailwind: Css,
         #[file("/static/json-enc.js")]
         json_enc: Js,
+        #[file("/static/preload.js")]
+        preload: Js,
     }
 
     #[derive(Routes, PartialEq, Debug, Clone, Copy)]
