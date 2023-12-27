@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 pub use axum::http::Uri;
+pub use axum::middleware;
 pub use axum::{
     async_trait,
     body::Body,
@@ -12,10 +13,10 @@ pub use axum::{
     routing::{self, get, post},
     RequestPartsExt, Router,
 };
+use axum::{extract::Request, middleware::Next};
 pub use axum_extra::headers::Cookie;
 pub use axum_extra::typed_header::TypedHeaderRejection;
 pub use axum_extra::TypedHeader;
-use html::Html;
 pub use justerror::Error as JustError;
 pub use static_stash::{Css, Js, StaticFiles, Wasm};
 use stpl::html::RenderExt;
@@ -97,11 +98,10 @@ impl App {
             axum::routing::get(move |uri: Uri| async move {
                 match static_files.get(&uri.path()) {
                     Some(file) => (
-                        // CACHE_CONTROL, "public, max-age=604800"
                         StatusCode::OK,
                         [
                             (CONTENT_TYPE, file.content_type),
-                            (CACHE_CONTROL, "public, max-age=604800"),
+                            (CACHE_CONTROL, "public, max-age=604800, immutable"),
                         ],
                         file.content,
                     ),
@@ -109,7 +109,7 @@ impl App {
                         StatusCode::NOT_FOUND,
                         [
                             (CONTENT_TYPE, "text/html; charset=utf-8"),
-                            (CACHE_CONTROL, "public, max-age=604800"),
+                            (CACHE_CONTROL, "public, max-age=604800, immutable"),
                         ],
                         "not found".as_bytes().to_vec(),
                     ),
@@ -123,6 +123,33 @@ impl App {
         let listener = tokio::net::TcpListener::bind(ip).await.unwrap();
         println!("Listening on {}", ip);
         axum::serve(listener, self.router).await.unwrap();
+    }
+}
+
+pub async fn etag_middleware(request: Request, next: Next) -> Response {
+    let if_none_match_header = request.headers().get(IF_NONE_MATCH).cloned();
+    let response = next.run(request).await;
+    let (mut parts, body) = response.into_parts();
+    let bytes = match axum::body::to_bytes(body, usize::MAX).await {
+        Ok(bytes) => bytes,
+        Err(_err) => return (StatusCode::BAD_REQUEST, "Failed to read body").into_response(),
+    };
+
+    let (etag, body) = match bytes.len() == 0 {
+        true => return parts.into_response(),
+        false => (hash(&bytes), Body::from(bytes)),
+    };
+
+    match if_none_match_header {
+        Some(if_none_match) => {
+            if if_none_match.to_str().unwrap() == etag {
+                parts.headers.insert(ETAG, etag.parse().unwrap());
+                ((StatusCode::NOT_MODIFIED, parts)).into_response()
+            } else {
+                (parts, body).into_response()
+            }
+        }
+        None => (parts, body).into_response(),
     }
 }
 
@@ -154,31 +181,20 @@ impl Responder {
     }
 
     pub fn render(mut self, component: impl Render + 'static) -> Self {
-        self.body = Body::from(component.render_to_string());
+        let body = component.render_to_string();
+
+        self.headers
+            .insert(ETAG, hash(body.as_bytes()).parse().unwrap());
         self.headers
             .insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+        self.body = Body::from(body);
 
         self
     }
 
-    pub fn render_string(mut self, html: String) -> Self {
-        self.body = Body::from(html);
+    pub fn cache(mut self, cache: Cache) -> Self {
         self.headers
-            .insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
-
-        self
-    }
-
-    pub fn cache(mut self, max_age: u8) -> Self {
-        self.headers.insert(
-            CACHE_CONTROL,
-            format!("private, max-age={}", max_age).parse().unwrap(),
-        );
-        self
-    }
-
-    pub fn etag(mut self, value: String) -> Self {
-        self.headers.insert(ETAG, value.parse().unwrap());
+            .insert(CACHE_CONTROL, cache.to_string().parse().unwrap());
         self
     }
 
@@ -197,5 +213,60 @@ impl Responder {
     pub fn set_cookie(mut self, value: impl Into<HeaderValue>) -> Self {
         self.headers.insert(SET_COOKIE, value.into());
         self
+    }
+}
+
+fn hash(content: &[u8]) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    content.hash(&mut hasher);
+    let hash_value = hasher.finish();
+
+    hash_value.to_string()
+}
+
+pub enum CacheType {
+    Public,
+    Private,
+}
+
+impl Display for CacheType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            CacheType::Public => "public",
+            CacheType::Private => "private",
+        })
+    }
+}
+
+pub struct Cache {
+    pub max_age: u64,
+    pub no_cache: bool,
+    pub cache_type: CacheType,
+    pub must_revalidate: bool,
+}
+
+impl Display for Cache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let parts = vec![
+            Some(format!("max_age={}", self.max_age)),
+            if self.no_cache {
+                Some("no-cache".to_owned())
+            } else {
+                None
+            },
+            Some(self.cache_type.to_string()),
+            if self.must_revalidate {
+                Some("must-revalidate".to_owned())
+            } else {
+                None
+            },
+        ]
+        .into_iter()
+        .filter_map(|x| x)
+        .collect::<Vec<String>>()
+        .join(",");
+        f.write_fmt(format_args!("{}", parts))
     }
 }

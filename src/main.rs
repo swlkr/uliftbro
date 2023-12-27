@@ -15,12 +15,13 @@ mod frontend {
 
 #[cfg(feature = "backend")]
 mod backend {
+    use axum::{middleware, Router};
     use db::{db, Database, Session, Set, User};
     use dubs::html::RenderExt;
     use dubs::{
-        and, app, asc, async_trait, desc, eq, res, tokio, Cookie, Css, FromRequestParts,
-        HeaderValue, IntoResponse, Js, Json, JustError, Parts, Response, StaticFiles, StatusCode,
-        TypedHeader,
+        and, app, asc, async_trait, desc, eq, etag_middleware, res, tokio, Cookie, Css,
+        FromRequestParts, HeaderValue, IntoResponse, Js, Json, JustError, Parts, Responder,
+        Response, StaticFiles, StatusCode, TypedHeader,
     };
     use dubs::{thiserror, ulid};
     use enum_router::Routes;
@@ -30,9 +31,9 @@ mod backend {
 
     #[tokio::main]
     pub async fn main() -> Result<()> {
-        let _ = db().await;
+        db().await;
         app()
-            .routes(Route::router())
+            .routes(routes())
             .static_files(StaticFile::once())
             .serve("127.0.0.1:9005")
             .await;
@@ -40,7 +41,13 @@ mod backend {
         Ok(())
     }
 
-    async fn root(SomeUser(user): SomeUser) -> Result<impl IntoResponse> {
+    fn routes() -> Router {
+        Route::router().layer(middleware::from_fn(etag_middleware))
+    }
+
+    type Html = Result<Responder>;
+
+    async fn root(SomeUser(user): SomeUser) -> Html {
         let is_logged_in = &user.as_ref().is_some();
         let user_id = user.unwrap_or_default().id;
         let Database { db, sets, .. } = db().await;
@@ -55,14 +62,10 @@ mod backend {
         let mut names = sets.into_iter().map(|s| s.name).collect::<Vec<_>>();
         names.dedup();
 
-        let body = render_component(
+        render(
             Route::Root,
             root_part(is_logged_in, names, SetForm::default()),
         )
-        .render_to_string();
-        let etag = hash(&body);
-
-        Ok(res().render_string(body).etag(etag.to_string()))
     }
 
     async fn create_set(
@@ -123,7 +126,7 @@ mod backend {
         }
     }
 
-    async fn set_list(user: User) -> Result<impl IntoResponse> {
+    async fn set_list(user: User) -> Html {
         let Database { db, sets, .. } = db().await;
 
         let sets: Vec<Set> = db
@@ -135,14 +138,11 @@ mod backend {
             .all()
             .await?;
 
-        let body = render_component(Route::SetList, set_list_part(user, sets)).render_to_string();
-        let etag = hash(&body);
-
-        Ok(res().render_string(body).etag(etag.to_string()))
+        render(Route::SetList, set_list_part(user, sets))
     }
 
-    async fn profile(user: User) -> Result<impl IntoResponse> {
-        Ok(render(Route::Profile, profile_part(user)).cache(15))
+    async fn profile(user: User) -> Html {
+        render(Route::Profile, profile_part(user))
     }
 
     async fn logout() -> impl IntoResponse {
@@ -168,15 +168,14 @@ mod backend {
         Ok(res().redirect(Route::SetList))
     }
 
-    async fn login_form() -> Result<impl IntoResponse> {
-        Ok(render(
+    async fn login_form() -> Html {
+        render(
             Route::Login,
             login_form_part(LoginForm {
                 secret: "".into(),
                 error: None,
             }),
         )
-        .cache(15))
     }
 
     #[derive(Serialize, Deserialize, Clone)]
@@ -216,10 +215,11 @@ mod backend {
     }
 
     mod parts {
+
         use super::*;
         use dubs::{
             html::{self, *},
-            Responder,
+            Cache, CacheType, Responder,
         };
 
         pub trait Render = dubs::html::Render + 'static;
@@ -442,12 +442,15 @@ mod backend {
             ))
         }
 
-        pub fn render(route: Route, inner: impl Render) -> Responder {
-            res().render((doctype("html"), html((head(), body(route, inner)))))
-        }
-
-        pub fn render_component(route: Route, inner: impl Render) -> impl Render + 'static {
-            (doctype("html"), html((head(), body(route, inner))))
+        pub fn render(route: Route, inner: impl Render) -> Result<Responder> {
+            Ok(res()
+                .render((doctype("html"), html((head(), body(route, inner)))))
+                .cache(Cache {
+                    cache_type: CacheType::Private,
+                    max_age: 0,
+                    no_cache: true,
+                    must_revalidate: true,
+                }))
         }
 
         fn label(name: &'static str) -> impl Render {
@@ -845,16 +848,6 @@ mod backend {
         use std::time::{SystemTime, UNIX_EPOCH};
         let now = SystemTime::now();
         now.duration_since(UNIX_EPOCH).unwrap().as_secs()
-    }
-
-    fn hash(content: &String) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        let hash_value = hasher.finish();
-
-        hash_value
     }
 
     fn session_cookie(id: Option<String>) -> HeaderValue {
