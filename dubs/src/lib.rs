@@ -18,6 +18,7 @@ pub use axum_extra::TypedHeader;
 use html::Html;
 pub use justerror::Error as JustError;
 pub use static_stash::{Css, Js, StaticFiles, Wasm};
+use stpl::html::RenderExt;
 use stpl::Render;
 pub use thiserror;
 pub mod tokio {
@@ -138,7 +139,7 @@ impl IntoResponse for Responder {
 pub struct Responder {
     status_code: StatusCode,
     headers: HeaderMap,
-    body: Html,
+    body: Body,
 }
 
 const HX_LOCATION: HeaderName = HeaderName::from_static("hx-location");
@@ -148,21 +149,36 @@ impl Responder {
         Self {
             status_code: StatusCode::OK,
             headers: HeaderMap::default(),
-            body: Html(Box::new(())),
+            body: Body::empty(),
         }
     }
 
     pub fn render(mut self, component: impl Render + 'static) -> Self {
-        self.body = Html(Box::new(component));
+        self.body = Body::from(component.render_to_string());
         self.headers
             .insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
 
         self
     }
 
-    pub fn cache(mut self) -> Self {
+    pub fn render_string(mut self, html: String) -> Self {
+        self.body = Body::from(html);
         self.headers
-            .insert(CACHE_CONTROL, "private, max-age=15".parse().unwrap());
+            .insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+
+        self
+    }
+
+    pub fn cache(mut self, max_age: u8) -> Self {
+        self.headers.insert(
+            CACHE_CONTROL,
+            format!("private, max-age={}", max_age).parse().unwrap(),
+        );
+        self
+    }
+
+    pub fn etag(mut self, value: String) -> Self {
+        self.headers.insert(ETAG, value.parse().unwrap());
         self
     }
 

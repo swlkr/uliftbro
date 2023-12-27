@@ -16,6 +16,7 @@ mod frontend {
 #[cfg(feature = "backend")]
 mod backend {
     use db::{db, Database, Session, Set, User};
+    use dubs::html::RenderExt;
     use dubs::{
         and, app, asc, async_trait, desc, eq, res, tokio, Cookie, Css, FromRequestParts,
         HeaderValue, IntoResponse, Js, Json, JustError, Parts, Response, StaticFiles, StatusCode,
@@ -40,6 +41,7 @@ mod backend {
     }
 
     async fn root(SomeUser(user): SomeUser) -> Result<impl IntoResponse> {
+        let is_logged_in = &user.as_ref().is_some();
         let user_id = user.unwrap_or_default().id;
         let Database { db, sets, .. } = db().await;
         let sets: Vec<Set> = db
@@ -52,13 +54,15 @@ mod backend {
             .await?;
         let mut names = sets.into_iter().map(|s| s.name).collect::<Vec<_>>();
         names.dedup();
-        let is_logged_in = user_id == String::default();
 
-        Ok(render(
+        let body = render_component(
             Route::Root,
             root_part(is_logged_in, names, SetForm::default()),
         )
-        .cache())
+        .render_to_string();
+        let etag = hash(&body);
+
+        Ok(res().render_string(body).etag(etag.to_string()))
     }
 
     async fn create_set(
@@ -131,11 +135,14 @@ mod backend {
             .all()
             .await?;
 
-        Ok(render(Route::SetList, set_list_part(user, sets)))
+        let body = render_component(Route::SetList, set_list_part(user, sets)).render_to_string();
+        let etag = hash(&body);
+
+        Ok(res().render_string(body).etag(etag.to_string()))
     }
 
     async fn profile(user: User) -> Result<impl IntoResponse> {
-        Ok(render(Route::Profile, profile_part(user)).cache())
+        Ok(render(Route::Profile, profile_part(user)).cache(15))
     }
 
     async fn logout() -> impl IntoResponse {
@@ -169,7 +176,7 @@ mod backend {
                 error: None,
             }),
         )
-        .cache())
+        .cache(15))
     }
 
     #[derive(Serialize, Deserialize, Clone)]
@@ -217,12 +224,16 @@ mod backend {
 
         pub trait Render = dubs::html::Render + 'static;
 
-        pub fn root_part(is_logged_in: bool, names: Vec<String>, set_form: SetForm) -> impl Render {
+        pub fn root_part(
+            is_logged_in: &bool,
+            names: Vec<String>,
+            set_form: SetForm,
+        ) -> impl Render {
             div.class("flex flex-col gap-8")((
                 h1.class("text-2xl text-center")("u lift bro?"),
                 set_form_part(names, set_form),
                 render_if(
-                    is_logged_in,
+                    !*is_logged_in,
                     a.class("text-center").href(Route::LoginForm)("Already have an account?"),
                 ),
             ))
@@ -433,6 +444,10 @@ mod backend {
 
         pub fn render(route: Route, inner: impl Render) -> Responder {
             res().render((doctype("html"), html((head(), body(route, inner)))))
+        }
+
+        pub fn render_component(route: Route, inner: impl Render) -> impl Render + 'static {
+            (doctype("html"), html((head(), body(route, inner))))
         }
 
         fn label(name: &'static str) -> impl Render {
@@ -830,6 +845,16 @@ mod backend {
         use std::time::{SystemTime, UNIX_EPOCH};
         let now = SystemTime::now();
         now.duration_since(UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    fn hash(content: &String) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        content.hash(&mut hasher);
+        let hash_value = hasher.finish();
+
+        hash_value
     }
 
     fn session_cookie(id: Option<String>) -> HeaderValue {
