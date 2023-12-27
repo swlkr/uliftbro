@@ -1140,7 +1140,7 @@ dependencies = [
 [[package]]
 name = "static_stash"
 version = "0.1.0"
-source = "git+https://github.com/swlkr/static_stash.git#fd505114cf68575f33f6a7188d63a3bded116f05"
+source = "git+https://github.com/swlkr/static_stash#6d355a4f7c3455ab986f147716c32ffbd5b94dae"
 dependencies = [
  "static_stash_macros",
 ]
@@ -1148,7 +1148,7 @@ dependencies = [
 [[package]]
 name = "static_stash_macros"
 version = "0.1.0"
-source = "git+https://github.com/swlkr/static_stash.git#fd505114cf68575f33f6a7188d63a3bded116f05"
+source = "git+https://github.com/swlkr/static_stash#6d355a4f7c3455ab986f147716c32ffbd5b94dae"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",

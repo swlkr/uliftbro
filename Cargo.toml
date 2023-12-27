@@ -4,13 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-dubs = { path = "dubs" }
-axum = { version = "0.7.0", features = ["macros"] }
-enum_router = { git = "https://github.com/swlkr/enum_router.git" }
-serde = { version = "1.0", features = ["derive"] }
+dubs = { path = "dubs", optional = true }
+axum = { version = "0.7.0", features = ["macros"], optional = true }
+enum_router = { git = "https://github.com/swlkr/enum_router.git", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [workspace]
 members = ["dubs"]
+
+[features]
+default=[]
+backend = ["dubs", "axum", "enum_router", "serde"]
+frontend = []
 
 [profile.release]
 lto = true

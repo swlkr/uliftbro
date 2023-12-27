@@ -17,7 +17,7 @@ pub use axum_extra::typed_header::TypedHeaderRejection;
 pub use axum_extra::TypedHeader;
 use html::Html;
 pub use justerror::Error as JustError;
-pub use static_stash::{Css, Js, StaticFiles};
+pub use static_stash::{Css, Js, StaticFiles, Wasm};
 use stpl::Render;
 pub use thiserror;
 pub mod tokio {
@@ -110,7 +110,7 @@ impl App {
                             (CONTENT_TYPE, "text/html; charset=utf-8"),
                             (CACHE_CONTROL, "public, max-age=604800"),
                         ],
-                        "not found",
+                        "not found".as_bytes().to_vec(),
                     ),
                 }
             }),
