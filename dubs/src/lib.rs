@@ -142,8 +142,8 @@ pub async fn etag_middleware(request: Request, next: Next) -> Response {
 
     match if_none_match_header {
         Some(if_none_match) => {
-            if if_none_match.to_str().unwrap() == etag {
-                parts.headers.insert(ETAG, etag.parse().unwrap());
+            if if_none_match.to_str().unwrap().parse::<u64>().unwrap() == etag {
+                parts.headers.insert(ETAG, etag.into());
                 ((StatusCode::NOT_MODIFIED, parts)).into_response()
             } else {
                 (parts, body).into_response()
@@ -183,8 +183,7 @@ impl Responder {
     pub fn render(mut self, component: impl Render + 'static) -> Self {
         let body = component.render_to_string();
 
-        self.headers
-            .insert(ETAG, hash(body.as_bytes()).parse().unwrap());
+        self.headers.insert(ETAG, hash(body.as_bytes()).into());
         self.headers
             .insert(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
         self.body = Body::from(body);
@@ -198,10 +197,17 @@ impl Responder {
         self
     }
 
+    pub fn short_cache(mut self) -> Self {
+        self.headers
+            .insert(CACHE_CONTROL, Cache::short().to_string().parse().unwrap());
+        self
+    }
+
     pub fn redirect(mut self, route: impl Display) -> Self {
         let value = HeaderValue::from_str(&route.to_string()).unwrap();
         self.headers.insert(LOCATION, value.clone());
         self.headers.insert(HX_LOCATION, value.clone());
+        self.status_code = StatusCode::SEE_OTHER;
         self
     }
 
@@ -216,35 +222,33 @@ impl Responder {
     }
 }
 
-fn hash(content: &[u8]) -> String {
+pub fn hash(content: &[u8]) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
     content.hash(&mut hasher);
     let hash_value = hasher.finish();
 
-    hash_value.to_string()
+    hash_value
 }
 
-pub enum CacheType {
-    Public,
-    Private,
-}
-
-impl Display for CacheType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            CacheType::Public => "public",
-            CacheType::Private => "private",
-        })
-    }
-}
-
+#[derive(Default)]
 pub struct Cache {
     pub max_age: u64,
     pub no_cache: bool,
-    pub cache_type: CacheType,
+    pub private: bool,
+    pub public: bool,
     pub must_revalidate: bool,
+}
+
+impl Cache {
+    fn short() -> Self {
+        Cache {
+            max_age: 60,
+            private: true,
+            ..Default::default()
+        }
+    }
 }
 
 impl Display for Cache {
@@ -256,7 +260,16 @@ impl Display for Cache {
             } else {
                 None
             },
-            Some(self.cache_type.to_string()),
+            if self.private {
+                Some("private".to_owned())
+            } else {
+                None
+            },
+            if self.public {
+                Some("public".to_owned())
+            } else {
+                None
+            },
             if self.must_revalidate {
                 Some("must-revalidate".to_owned())
             } else {

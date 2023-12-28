@@ -19,9 +19,9 @@ mod backend {
     use db::{db, Database, Session, Set, User};
     use dubs::html::RenderExt;
     use dubs::{
-        and, app, asc, async_trait, desc, eq, etag_middleware, res, tokio, Cache, CacheType,
-        Cookie, Css, FromRequestParts, HeaderValue, IntoResponse, Js, Json, JustError, Parts,
-        Responder, Response, StaticFiles, StatusCode, TypedHeader,
+        and, app, asc, async_trait, desc, eq, etag_middleware, res, tokio, Cookie, Css,
+        FromRequestParts, HeaderValue, IntoResponse, Js, Json, JustError, Parts, Responder,
+        Response, StaticFiles, StatusCode, TypedHeader,
     };
     use dubs::{thiserror, ulid};
     use enum_router::Routes;
@@ -47,14 +47,20 @@ mod backend {
 
     type Html = Result<Responder>;
 
-    async fn root(SomeUser(user): SomeUser) -> Html {
-        let is_logged_in = &user.as_ref().is_some();
-        let user_id = user.unwrap_or_default().id;
+    async fn root(SomeUser(user): SomeUser) -> impl IntoResponse {
+        if user.is_some() {
+            return res().redirect(Route::SetForm);
+        }
+
+        response(Route::Root, root_view()).short_cache()
+    }
+
+    async fn set_form(user: User) -> Html {
         let Database { db, sets, .. } = db().await;
         let sets: Vec<Set> = db
             .select()
             .from(sets)
-            .r#where(eq(sets.user_id, &user_id))
+            .r#where(eq(sets.user_id, &user.id))
             .limit(30)
             .order(vec![asc(sets.name)])
             .all()
@@ -62,10 +68,7 @@ mod backend {
         let mut names = sets.into_iter().map(|s| s.name).collect::<Vec<_>>();
         names.dedup();
 
-        render(
-            Route::Root,
-            root_part(is_logged_in, names, SetForm::default()),
-        )
+        Ok(response(Route::SetForm, set_form_view(names, SetForm::default())).short_cache())
     }
 
     async fn create_set(
@@ -142,12 +145,7 @@ mod backend {
     }
 
     async fn profile(user: User) -> impl IntoResponse {
-        response(Route::Profile, profile_part(user)).cache(Cache {
-            max_age: 60,
-            cache_type: CacheType::Private,
-            must_revalidate: false,
-            no_cache: false,
-        })
+        response(Route::Profile, profile_part(user)).short_cache()
     }
 
     async fn logout() -> impl IntoResponse {
@@ -229,22 +227,15 @@ mod backend {
 
         pub trait Render = dubs::html::Render + 'static;
 
-        pub fn root_part(
-            is_logged_in: &bool,
-            names: Vec<String>,
-            set_form: SetForm,
-        ) -> impl Render {
+        pub fn root_view() -> impl Render {
             div.class("flex flex-col gap-8")((
                 h1.class("text-2xl text-center")("u lift bro?"),
-                set_form_part(names, set_form),
-                render_if(
-                    !*is_logged_in,
-                    a.class("text-center").href(Route::LoginForm)("Already have an account?"),
-                ),
+                set_form_view(vec![], SetForm::default()),
+                a.class("text-center").href(Route::LoginForm)("Already have an account?"),
             ))
         }
 
-        fn set_form_part(
+        pub fn set_form_view(
             names: Vec<String>,
             SetForm { name, reps, weight }: SetForm,
         ) -> impl Render {
@@ -431,7 +422,7 @@ mod backend {
             "text-center lg:max-w-md w-full dark:bg-gray-800 bg-gray-300 lg:bg-transparent lg:dark:bg-transparent flex lg:mx-auto justify-around items-center lg:py-6 py-2 absolute bottom-0 lg:bottom-auto lg:relative",
         )((
             nav_link(Route::SetList, route, list_icon(), "Sets"),
-            nav_link(Route::Root, route, plus_circle_icon(), "Add a set"),
+            nav_link(Route::SetForm, route, plus_circle_icon(), "Add a set"),
             nav_link(Route::Profile, route, user_circle_icon(), "Profile"),
         ))
         }
@@ -547,6 +538,8 @@ mod backend {
     enum Route {
         #[get("/")]
         Root,
+        #[get("/set-form")]
+        SetForm, // logged in
         #[post("/sets")]
         CreateSet,
         #[get("/sets")]
