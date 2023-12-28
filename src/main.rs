@@ -219,7 +219,7 @@ mod backend {
         use super::*;
         use dubs::{
             html::{self, *},
-            Cache, CacheType, Responder,
+            Responder,
         };
 
         pub trait Render = dubs::html::Render + 'static;
@@ -443,14 +443,7 @@ mod backend {
         }
 
         pub fn render(route: Route, inner: impl Render) -> Result<Responder> {
-            Ok(res()
-                .render((doctype("html"), html((head(), body(route, inner)))))
-                .cache(Cache {
-                    cache_type: CacheType::Private,
-                    max_age: 0,
-                    no_cache: true,
-                    must_revalidate: true,
-                }))
+            Ok(res().render((doctype("html"), html((head(), body(route, inner))))))
         }
 
         fn label(name: &'static str) -> impl Render {
