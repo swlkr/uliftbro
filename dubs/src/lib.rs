@@ -250,7 +250,7 @@ pub struct Cache {
 impl Display for Cache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let parts = vec![
-            Some(format!("max_age={}", self.max_age)),
+            Some(format!("max-age={}", self.max_age)),
             if self.no_cache {
                 Some("no-cache".to_owned())
             } else {

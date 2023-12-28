@@ -19,9 +19,9 @@ mod backend {
     use db::{db, Database, Session, Set, User};
     use dubs::html::RenderExt;
     use dubs::{
-        and, app, asc, async_trait, desc, eq, etag_middleware, res, tokio, Cookie, Css,
-        FromRequestParts, HeaderValue, IntoResponse, Js, Json, JustError, Parts, Responder,
-        Response, StaticFiles, StatusCode, TypedHeader,
+        and, app, asc, async_trait, desc, eq, etag_middleware, res, tokio, Cache, CacheType,
+        Cookie, Css, FromRequestParts, HeaderValue, IntoResponse, Js, Json, JustError, Parts,
+        Responder, Response, StaticFiles, StatusCode, TypedHeader,
     };
     use dubs::{thiserror, ulid};
     use enum_router::Routes;
@@ -141,8 +141,13 @@ mod backend {
         render(Route::SetList, set_list_part(user, sets))
     }
 
-    async fn profile(user: User) -> Html {
-        render(Route::Profile, profile_part(user))
+    async fn profile(user: User) -> impl IntoResponse {
+        response(Route::Profile, profile_part(user)).cache(Cache {
+            max_age: 60,
+            cache_type: CacheType::Private,
+            must_revalidate: false,
+            no_cache: false,
+        })
     }
 
     async fn logout() -> impl IntoResponse {
@@ -443,7 +448,11 @@ mod backend {
         }
 
         pub fn render(route: Route, inner: impl Render) -> Result<Responder> {
-            Ok(res().render((doctype("html"), html((head(), body(route, inner))))))
+            Ok(response(route, inner))
+        }
+
+        pub fn response(route: Route, inner: impl Render) -> Responder {
+            res().render((doctype("html"), html((head(), body(route, inner)))))
         }
 
         fn label(name: &'static str) -> impl Render {
