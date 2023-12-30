@@ -8,26 +8,157 @@ fn main() {
     backend::main().unwrap();
 }
 
+use std::{borrow::Cow, fmt::Display, str::FromStr};
+use stpl::{
+    html::{button, div},
+    Render,
+};
+
+pub trait Component: Sized + Clone + 'static + Send + Sync {
+    type Message: FromStr;
+    const NAME: &'static str;
+
+    fn new() -> Self;
+    fn update(&mut self, message: Self::Message);
+    fn view(self) -> impl Render + 'static;
+
+    fn init() -> impl Render + 'static {
+        #[cfg(feature = "frontend")]
+        {
+            use stpl::html::RenderExt;
+            use web::*;
+            let mut component = Self::new();
+            let prefix = format!(r#"[zx-data="{}"]"#, Self::NAME);
+            let selector = format!(r#"{} [zx-click]"#, prefix);
+            document_add_event_listener(
+                "click",
+                &selector,
+                "zx-click",
+                move |e: MouseEvent| match e.target.as_str().parse() {
+                    Ok(msg) => {
+                        component.update(msg);
+                        selector_set_inner_html(
+                            &prefix,
+                            &component.clone().view().render_to_string(),
+                        )
+                    }
+                    Err(_) => {}
+                },
+            );
+        }
+
+        div.attr("zx-data", Self::NAME)(Self::new().view())
+    }
+}
+
+#[derive(Clone)]
+pub struct Counter {
+    count: i64,
+}
+
+pub enum Msg {
+    Up,
+    Down,
+}
+
+impl Component for Counter {
+    type Message = Msg;
+    const NAME: &'static str = "counter";
+
+    fn new() -> Self {
+        Counter { count: 0 }
+    }
+
+    fn update(&mut self, message: Self::Message) {
+        match message {
+            Msg::Up => self.count += 1,
+            Msg::Down => self.count -= 1,
+        }
+    }
+
+    fn view(self) -> impl Render + 'static {
+        div.class("flex flex-col gap-4")((
+            div.class("flex gap-4")((
+                button.on_click(Msg::Up)("up"),
+                button.on_click(Msg::Down)("down"),
+            )),
+            div(self.count),
+            div(self.count),
+        ))
+    }
+}
+
+impl Into<Cow<'static, str>> for Msg {
+    fn into(self) -> Cow<'static, str> {
+        match self {
+            Msg::Up => Cow::Owned("up".into()),
+            Msg::Down => Cow::Owned("down".into()),
+        }
+    }
+}
+
+impl Display for Msg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Msg::Up => "up",
+            Msg::Down => "down",
+        })
+    }
+}
+
+// pub fn text<T: Display>(signal: &mut Signal<T>) -> impl Render + 'static {
+//     let id = nanoid::nanoid!();
+//     let id1 = id.clone();
+//     #[cfg(feature = "frontend")]
+//     {
+//         use web::selector_set_inner_text;
+//         signal.subscribe(move |value| {
+//             selector_set_inner_text(&id1, &value.to_string());
+//         });
+//     }
+//     div.id(id)(signal.get().to_string())
+// }
+
+#[derive(Debug)]
+pub enum Error {
+    ParseError,
+}
+
+impl FromStr for Msg {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "up" => Ok(Msg::Up),
+            "down" => Ok(Msg::Down),
+            _ => Err(Error::ParseError),
+        }
+    }
+}
+
 #[cfg(feature = "frontend")]
 mod frontend {
-    pub fn main() {}
+    use crate::{Component, Counter};
+
+    pub fn main() {
+        Counter::init();
+    }
 }
 
 #[cfg(feature = "backend")]
 mod backend {
     use axum::{middleware, Router};
     use db::{db, Database, Session, Set, User};
-    use dubs::html::RenderExt;
     use dubs::{
         and, app, asc, async_trait, desc, eq, etag_middleware, res, tokio, Cookie, Css,
         FromRequestParts, HeaderValue, IntoResponse, Js, Json, JustError, Parts, Responder,
-        Response, StaticFiles, StatusCode, TypedHeader,
+        Response, StaticFiles, StatusCode, TypedHeader, Wasm,
     };
     use dubs::{thiserror, ulid};
     use enum_router::Routes;
-    use parts::*;
     use serde::{Deserialize, Serialize};
     use std::borrow::Cow;
+    use views::*;
 
     #[tokio::main]
     pub async fn main() -> Result<()> {
@@ -124,7 +255,7 @@ mod backend {
                 Ok(res()
                     .redirect(Route::SetList)
                     .set_cookie(session_cookie(Some(session.id)))
-                    .render(set_list_part(user, sets)))
+                    .render(set_list_view(user, sets)))
             }
         }
     }
@@ -141,11 +272,11 @@ mod backend {
             .all()
             .await?;
 
-        render(Route::SetList, set_list_part(user, sets))
+        render(Route::SetList, set_list_view(user, sets))
     }
 
     async fn profile(user: User) -> impl IntoResponse {
-        response(Route::Profile, profile_part(user)).short_cache()
+        response(Route::Profile, profile_view(user)).short_cache()
     }
 
     async fn logout() -> impl IntoResponse {
@@ -174,7 +305,7 @@ mod backend {
     async fn login_form() -> Html {
         render(
             Route::Login,
-            login_form_part(LoginForm {
+            login_form_view(LoginForm {
                 secret: "".into(),
                 error: None,
             }),
@@ -213,32 +344,32 @@ mod backend {
                     .set_cookie(session_cookie(Some(session.id)))
                     .into_response())
             }
-            None => Ok(render(Route::LoginForm, login_form_part(params.clone())).into_response()),
+            None => Ok(render(Route::LoginForm, login_form_view(params.clone())).into_response()),
         }
     }
 
-    mod parts {
-
+    mod views {
         use super::*;
-        use dubs::{
-            html::{self, *},
-            Responder,
-        };
+        use crate::{Component, Counter, Render};
+        use dubs::Responder;
+        use stpl::html::{self, RenderExt, *};
 
-        pub trait Render = dubs::html::Render + 'static;
+        // pub fn root_view() -> impl Render + 'static {
+        //     div.class("flex flex-col gap-8")((
+        //         h1.class("text-2xl text-center")("u lift bro?"),
+        //         set_form_view(vec![], SetForm::default()),
+        //         a.class("text-center").href(Route::LoginForm)("Already have an account?"),
+        //     ))
+        //}
 
-        pub fn root_view() -> impl Render {
-            div.class("flex flex-col gap-8")((
-                h1.class("text-2xl text-center")("u lift bro?"),
-                set_form_view(vec![], SetForm::default()),
-                a.class("text-center").href(Route::LoginForm)("Already have an account?"),
-            ))
+        pub fn root_view() -> impl Render + 'static {
+            Counter::init()
         }
 
         pub fn set_form_view(
             names: Vec<String>,
             SetForm { name, reps, weight }: SetForm,
-        ) -> impl Render {
+        ) -> impl Render + 'static {
             form(Route::CreateSet).class("flex flex-col px-4 lg:px-0 pt-4 gap-4")((
                 div((label("exercise"), suggest_input("name", names, name, true))),
                 div.class("flex gap-4")((
@@ -249,7 +380,7 @@ mod backend {
             ))
         }
 
-        fn render_if(is_true: bool, part: impl Render) -> impl Render {
+        fn render_if(is_true: bool, part: impl Render + 'static) -> impl Render + 'static {
             raw(if is_true {
                 part.render_to_string()
             } else {
@@ -257,7 +388,7 @@ mod backend {
             })
         }
 
-        fn time_ago(seconds: u64) -> impl Render {
+        fn time_ago(seconds: u64) -> impl Render + 'static {
             let now = now();
             let seconds = now - seconds;
 
@@ -299,7 +430,7 @@ mod backend {
             now - seconds
         }
 
-        fn set_li(set: Set) -> impl Render {
+        fn set_li(set: Set) -> impl Render + 'static {
             li.class("flex justify-between")((
                 div.class("flex flex-col gap-1 py-5")((
                     div.class("font-bold")(set.name),
@@ -325,7 +456,7 @@ mod backend {
             .class("rounded-md bg-transparent border dark:border-gray-700 border-gray-300 text-white px-3 py-1")
         }
 
-        pub fn set_list_part(user: User, sets: Vec<Set>) -> impl Render {
+        pub fn set_list_view(user: User, sets: Vec<Set>) -> impl Render {
             div.class("px-4 lg:px-0 flex flex-col gap-4")((
                 h1.class("text-2xl text-center")("Sets"),
                 render_if(
@@ -360,13 +491,20 @@ mod backend {
             html::button.class("flex rounded-md bg-orange-500 active:bg-orange-700 text-white p-4 items-center justify-center uppercase w-full")
         }
 
-        fn head() -> impl Render {
+        fn head() -> impl Render + 'static {
             let static_files = StaticFile::once();
             html::head((
-                link.href(static_files.tailwind.clone()).rel("stylesheet"),
-                script.src(static_files.htmx.clone()).defer(),
-                script.src(static_files.json_enc.clone()).defer(),
-                script.src(static_files.preload.clone()).defer(),
+                (
+                    link.href(static_files.tailwind.clone()).rel("stylesheet"),
+                    script.src(static_files.htmx.clone()).defer(),
+                    script.src(static_files.json_enc.clone()).defer(),
+                    script.src(static_files.preload.clone()).defer(),
+                ),
+                script.src(static_files.js_wasm.clone()).defer(),
+                script
+                    .src(static_files.app.clone())
+                    .r#type("application/wasm")
+                    .defer(),
                 meta.charset("UTF-8"),
                 meta.content("text/html; charset=utf-8")
                     .attr("http-equiv", "Content-Type"),
@@ -375,7 +513,7 @@ mod backend {
             ))
         }
 
-        fn plus_circle_icon() -> impl Render {
+        fn plus_circle_icon() -> impl Render + 'static {
             raw(r#"
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" data-slot="icon" class="w-6 h-6">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -383,7 +521,7 @@ mod backend {
         "#)
         }
 
-        fn list_icon() -> impl Render {
+        fn list_icon() -> impl Render + 'static {
             raw(
                 r#"<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" data-slot="icon" class="w-6 h-6">
   <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
@@ -392,7 +530,7 @@ mod backend {
             )
         }
 
-        fn user_circle_icon() -> impl Render {
+        fn user_circle_icon() -> impl Render + 'static {
             raw(
                 r#"<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" data-slot="icon" class="w-6 h-6">
   <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
@@ -404,9 +542,9 @@ mod backend {
         fn nav_link(
             route: Route,
             current_route: Route,
-            icon: impl Render,
+            icon: impl Render + 'static,
             s: &'static str,
-        ) -> impl Render {
+        ) -> impl Render + 'static {
             let mut class = "flex flex-col text-center justify-center items-center".to_owned();
             if route == current_route {
                 class.push_str(" text-orange-500");
@@ -417,7 +555,7 @@ mod backend {
             ))
         }
 
-        fn nav(route: Route) -> impl Render {
+        fn nav(route: Route) -> impl Render + 'static {
             html::nav.class(
             "text-center lg:max-w-md w-full dark:bg-gray-800 bg-gray-300 lg:bg-transparent lg:dark:bg-transparent flex lg:mx-auto justify-around items-center lg:py-6 py-2 absolute bottom-0 lg:bottom-auto lg:relative",
         )((
@@ -427,7 +565,7 @@ mod backend {
         ))
         }
 
-        fn body(route: Route, inner: impl Render) -> impl Render {
+        fn body(route: Route, inner: impl Render + 'static) -> impl Render + 'static {
             html::body
                 .class("h-screen dark:bg-gray-900 dark:text-white")
                 .attr("hx-boost", "true")
@@ -438,15 +576,15 @@ mod backend {
             ))
         }
 
-        pub fn render(route: Route, inner: impl Render) -> Result<Responder> {
+        pub fn render(route: Route, inner: impl Render + 'static) -> Result<Responder> {
             Ok(response(route, inner))
         }
 
-        pub fn response(route: Route, inner: impl Render) -> Responder {
+        pub fn response(route: Route, inner: impl Render + 'static) -> Responder {
             res().render((doctype("html"), html((head(), body(route, inner)))))
         }
 
-        fn label(name: &'static str) -> impl Render {
+        fn label(name: &'static str) -> impl Render + 'static {
             html::label.class("flex flex-col gap-1").r#for(name)(name)
         }
 
@@ -454,7 +592,7 @@ mod backend {
             input.class("block w-full rounded-md border-0 px-2 py-4 dark:bg-gray-700 dark:text-white light:text-gray-900 outline-0 focus:outline-0 focus:ring-0 focus-visible:outline-0 focus:outline-none placeholder:text-gray-400").r#type("text")
         }
 
-        fn number_input(name: &'static str, value: usize) -> impl Render {
+        fn number_input(name: &'static str, value: usize) -> impl Render + 'static {
             input.class("block w-full rounded-md border-0 px-2 py-4 dark:bg-gray-700 dark:text-white light:text-gray-900 outline-0 focus:outline-0 focus:ring-0 focus-visible:outline-0 focus:outline-none placeholder:text-gray-400").r#type("number").name(name).value(value.to_string())
         }
 
@@ -463,7 +601,7 @@ mod backend {
             options: Vec<String>,
             value: String,
             autofocus: bool,
-        ) -> impl Render {
+        ) -> impl Render + 'static {
             let list = format!("{}_list", name);
             let mut text_input = text_input()
                 .name(name)
@@ -484,7 +622,7 @@ mod backend {
             )
         }
 
-        pub fn profile_part(user: User) -> impl Render {
+        pub fn profile_view(user: User) -> impl Render + 'static {
             div.class("flex flex-col gap-8 px-4 lg:px-0")((
                 h1.class("text-2xl text-center")("Profile"),
                 h1(("Your secret key: ", span.class("font-bold")(user.secret))),
@@ -497,7 +635,7 @@ mod backend {
             html::form.method("post").action(route)
         }
 
-        pub fn login_form_part(login_form: LoginForm) -> impl Render {
+        pub fn login_form_view(login_form: LoginForm) -> impl Render + 'static {
             form(Route::Login).class("flex flex-col gap-4 px-4 lg:px-0")((
                 div(match login_form.error {
                     Some(err) => err,
@@ -532,6 +670,10 @@ mod backend {
         json_enc: Js,
         #[file("/static/preload.js")]
         preload: Js,
+        #[file("/static/js-wasm.js")]
+        js_wasm: Js,
+        #[file("/static/uliftbro.wasm")]
+        app: Wasm,
     }
 
     #[derive(Routes, PartialEq, Debug, Clone, Copy)]

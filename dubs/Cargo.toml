@@ -18,6 +18,5 @@ tracing-subscriber = { version = "0.3.17" }
 thiserror = { version = "1.0.50" }
 justerror = { version = "1.1.0" }
 enum_router = { git = "https://github.com/swlkr/enum_router.git" }
-stpl = { git = "https://github.com/swlkr/stpl" }
+stpl = { path = "/Users/sean/Developer/swlkr/stpl" }
 static_stash = { git = "https://github.com/swlkr/static_stash" }
-

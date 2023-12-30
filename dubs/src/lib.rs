@@ -1,3 +1,5 @@
+#![feature(trait_alias)]
+
 use std::fmt::Display;
 
 pub use axum::http::Uri;
@@ -20,7 +22,6 @@ pub use axum_extra::TypedHeader;
 pub use justerror::Error as JustError;
 pub use static_stash::{Css, Js, StaticFiles, Wasm};
 use stpl::html::RenderExt;
-use stpl::Render;
 pub use thiserror;
 pub mod tokio {
     pub use tokio::*;
@@ -36,7 +37,12 @@ pub fn ulid() -> String {
     ulid::Ulid::new().to_string()
 }
 
+pub fn new_ulid() -> u128 {
+    ulid::Ulid::new().0
+}
+
 pub mod html {
+
     use std::fmt::Display;
 
     use axum::body::Body;
@@ -50,7 +56,7 @@ pub mod html {
         script, section, span, string, tbody, textarea, th, thead, tr, tt, u, ul, BareTag,
         FinalTag, Tag,
     };
-    pub use stpl::Render;
+    use stpl::Render;
     pub use stpl::Renderer;
 
     pub struct Html(pub Box<dyn Render>);
@@ -180,7 +186,7 @@ impl Responder {
         }
     }
 
-    pub fn render(mut self, component: impl Render + 'static) -> Self {
+    pub fn render(mut self, component: impl stpl::Render) -> Self {
         let body = component.render_to_string();
 
         self.headers.insert(ETAG, hash(body.as_bytes()).into());
