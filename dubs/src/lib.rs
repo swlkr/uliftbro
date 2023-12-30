@@ -143,7 +143,10 @@ pub async fn etag_middleware(request: Request, next: Next) -> Response {
     match if_none_match_header {
         Some(if_none_match) => {
             if if_none_match.to_str().unwrap().parse::<u64>().unwrap() == etag {
-                parts.headers.insert(ETAG, etag.into());
+                parts.headers.insert(
+                    ETAG,
+                    HeaderValue::from_str(&format!(r#""{}""#, etag)).unwrap(),
+                );
                 ((StatusCode::NOT_MODIFIED, parts)).into_response()
             } else {
                 (parts, body).into_response()

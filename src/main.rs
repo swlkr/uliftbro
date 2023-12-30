@@ -10,7 +10,10 @@ fn main() {
 
 #[cfg(feature = "frontend")]
 mod frontend {
-    pub fn main() {}
+    use web::*;
+    pub fn main() {
+        console_log("hello");
+    }
 }
 
 #[cfg(feature = "backend")]
@@ -21,7 +24,7 @@ mod backend {
     use dubs::{
         and, app, asc, async_trait, desc, eq, etag_middleware, res, tokio, Cookie, Css,
         FromRequestParts, HeaderValue, IntoResponse, Js, Json, JustError, Parts, Responder,
-        Response, StaticFiles, StatusCode, TypedHeader,
+        Response, StaticFiles, StatusCode, TypedHeader, Wasm,
     };
     use dubs::{thiserror, ulid};
     use enum_router::Routes;
@@ -363,10 +366,17 @@ mod backend {
         fn head() -> impl Render {
             let static_files = StaticFile::once();
             html::head((
-                link.href(static_files.tailwind.clone()).rel("stylesheet"),
-                script.src(static_files.htmx.clone()).defer(),
-                script.src(static_files.json_enc.clone()).defer(),
-                script.src(static_files.preload.clone()).defer(),
+                (
+                    link.href(static_files.tailwind.clone()).rel("stylesheet"),
+                    script.src(static_files.htmx.clone()).defer(),
+                    script.src(static_files.json_enc.clone()).defer(),
+                    script.src(static_files.preload.clone()).defer(),
+                ),
+                script.src(static_files.js_wasm.clone()).defer(),
+                script
+                    .src(static_files.app.clone())
+                    .r#type("application/wasm")
+                    .defer(),
                 meta.charset("UTF-8"),
                 meta.content("text/html; charset=utf-8")
                     .attr("http-equiv", "Content-Type"),
@@ -532,6 +542,10 @@ mod backend {
         json_enc: Js,
         #[file("/static/preload.js")]
         preload: Js,
+        #[file("/static/js-wasm.js")]
+        js_wasm: Js,
+        #[file("/static/app.wasm")]
+        app: Wasm,
     }
 
     #[derive(Routes, PartialEq, Debug, Clone, Copy)]

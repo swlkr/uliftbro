@@ -8,14 +8,16 @@ dubs = { path = "dubs", optional = true }
 axum = { version = "0.7.0", features = ["macros"], optional = true }
 enum_router = { git = "https://github.com/swlkr/enum_router.git", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
+web = { path = "/Users/sean/Developer/swlkr/web.rs/crates/web", optional = true }
+sycamore-reactive = { version = "0.8.1" }
 
 [workspace]
 members = ["dubs"]
 
 [features]
-default=[]
+default = []
 backend = ["dubs", "axum", "enum_router", "serde"]
-frontend = []
+frontend = ["web"]
 
 [profile.release]
 lto = true
